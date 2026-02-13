@@ -399,7 +399,7 @@ class IntegratedWordExcelManager(QMainWindow):
         self.statusBar().showMessage("✅ 준비 완료")
 
         # Add version info to right side of status bar
-        version_label = QLabel("v1.0 | 2024-01")
+        version_label = QLabel("v1.0 | 2026-02-13")
         version_label.setStyleSheet("color: white; padding-right: 10px;")
         self.statusBar().addPermanentWidget(version_label)
 
@@ -1078,7 +1078,7 @@ class ImageFilenameManagerTab(QWidget):
             image_paragraph = cell.add_paragraph()
             image_run = image_paragraph.add_run()
 
-            if self.insert_image_to_run(image_run, png_files[matched_filename], cell.width, log_callback=log_callback):
+            if self.insert_image_to_run(image_run, png_files[matched_filename], cell, log_callback=log_callback):
                 msg = f"        ✅ 이미지 삽입: {os.path.basename(png_files[matched_filename])}"
                 if log_callback:
                     log_callback(msg)
@@ -1299,28 +1299,69 @@ class ImageFilenameManagerTab(QWidget):
         """문단 텍스트 추출"""
         return ''.join(run.text for run in paragraph.runs).strip()
 
-    def insert_image_to_run(self, run, img_path, cell_width, log_callback=None):
+    def insert_image_to_run(self, run, img_path, cell, log_callback=None):
         """
         이미지를 Run에 삽입
 
         Args:
             run: Word 문서의 Run 객체
             img_path: 이미지 파일 경로
-            cell_width: 셀 너비
+            cell: 셀 객체 (width와 height 정보 포함)
             log_callback: 로그 출력 콜백 (Worker 스레드용, None이면 self.log 사용)
                          Worker 스레드에서는 시그널로 전달하여 _silent_mode 영향 회피
         """
         try:
-            max_width = Cm(8)
+            # ========================================
+            # 이미지 크기 조정 로직
+            # - 셀의 가로/세로 크기 모두 고려
+            # - 이미지 비율 유지하면서 셀 안에 꼭 맞게 조정
+            # - 가로 또는 세로 중 제한적인 쪽에 맞추고
+            #   다른 쪽은 비율에 맞게 자동 조정
+            # ========================================
 
-            if hasattr(cell_width, 'cm') and cell_width.cm:
-                max_width = Cm(min(cell_width.cm - 0.5, 8))
+            # 셀 크기 가져오기 (여백 고려)
+            MARGIN = Cm(0.3)  # 셀 여백
+            DEFAULT_MAX_WIDTH = Cm(8)
+            DEFAULT_MAX_HEIGHT = Cm(6)
 
+            # 셀 너비 확인
+            if hasattr(cell, 'width') and hasattr(cell.width, 'cm') and cell.width.cm:
+                max_width = Cm(cell.width.cm - MARGIN.cm)
+            else:
+                max_width = DEFAULT_MAX_WIDTH
+
+            # 셀 높이 확인
+            if hasattr(cell, 'height') and hasattr(cell.height, 'cm') and cell.height.cm:
+                max_height = Cm(cell.height.cm - MARGIN.cm)
+            else:
+                max_height = DEFAULT_MAX_HEIGHT
+
+            # 이미지 원본 크기 및 비율 계산
             with Image.open(img_path) as img:
-                width, height = img.size
-                aspect_ratio = height / width if width > 0 else 1
-                new_width = max_width
-                new_height = new_width * aspect_ratio
+                img_width, img_height = img.size
+                if img_width == 0 or img_height == 0:
+                    raise ValueError(f"Invalid image dimensions: {img_width}x{img_height}")
+
+                aspect_ratio = img_height / img_width
+
+            # 가로/세로 제한을 모두 고려하여 크기 결정
+            # 1. 가로 기준으로 계산
+            width_based_width = max_width
+            width_based_height = max_width * aspect_ratio
+
+            # 2. 세로 기준으로 계산
+            height_based_height = max_height
+            height_based_width = max_height / aspect_ratio
+
+            # 3. 두 방식 중 셀 안에 들어가는 작은 쪽 선택
+            if width_based_height <= max_height:
+                # 가로 기준이 셀 안에 맞음
+                new_width = width_based_width
+                new_height = width_based_height
+            else:
+                # 세로 기준으로 조정 필요
+                new_width = height_based_width
+                new_height = height_based_height
 
             run.add_picture(img_path, width=new_width, height=new_height)
 
@@ -1382,7 +1423,7 @@ class ImageFilenameManagerTab(QWidget):
 
                     run = paragraph.add_run()
                     # log_callback을 전달하여 에러 메시지 항상 출력
-                    if self.insert_image_to_run(run, img_path, cell.width, log_callback=log_callback):
+                    if self.insert_image_to_run(run, img_path, cell, log_callback=log_callback):
                         successful_insertions += 1
                         success_msg = f"    ✅ 이미지 매칭 및 삽입 성공: {original_text}"
                         if log_callback:
@@ -1960,79 +2001,69 @@ class ExcelRangeProcessorThread(QThread):
         logger.info(message)
         self.progress.emit(message)
 
-    def create_excel_app_with_retry(self, max_retries=3):
-        """Excel 애플리케이션을 재시도 로직과 함께 생성"""
-        for attempt in range(max_retries):
+    # ========================================
+    # 주의: 재시도 로직 제거됨 (사용자 요청)
+    # 이전 버전에서는 최대 3회 재시도했으나
+    # 현재는 1회만 시도 후 실패 시 즉시 예외 발생
+    # ========================================
+    def create_excel_app_with_retry(self):
+        """Excel 애플리케이션 생성 (재시도 로직 제거됨)"""
+        try:
+            # COM 초기화 (스레드별로 필요)
+            pythoncom.CoInitialize()
+
+            # Excel 애플리케이션 생성
+            excel = win32.gencache.EnsureDispatch('Excel.Application')
+
+            excel.Visible = False
+            excel.DisplayAlerts = False
+            self.log(f"  ✓ Excel 애플리케이션 생성 성공")
+            return excel
+
+        except Exception as e:
+            self.log(f"  ✗ Excel 생성 실패: {str(e)}")
+
+            # COM 정리
             try:
-                # COM 초기화 (스레드별로 필요)
-                pythoncom.CoInitialize()
+                pythoncom.CoUninitialize()
+            except:
+                pass
 
-                # 첫 시도는 EnsureDispatch, 실패 시 Dispatch 사용
-                if attempt == 0:
-                    excel = win32.gencache.EnsureDispatch('Excel.Application')
-                else:
-                    # 캐시 문제 시 Dispatch 사용
-                    excel = win32.Dispatch('Excel.Application')
+            # 가비지 컬렉션
+            gc.collect()
 
-                excel.Visible = False
-                excel.DisplayAlerts = False
-                self.log(f"  ✓ Excel 애플리케이션 생성 성공 (시도 {attempt + 1}/{max_retries})")
-                return excel
+            raise Exception(f"Excel 애플리케이션 생성 실패: {str(e)}")
 
-            except Exception as e:
-                self.log(f"  ⚠️ Excel 생성 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
+    # ========================================
+    # 주의: 재시도 로직 제거됨 (사용자 요청)
+    # 이전 버전에서는 최대 3회 재시도했으나
+    # 현재는 1회만 시도 후 실패 시 즉시 예외 발생
+    # ========================================
+    def create_word_app_with_retry(self):
+        """Word 애플리케이션 생성 (재시도 로직 제거됨)"""
+        try:
+            # COM 초기화 (스레드별로 필요)
+            pythoncom.CoInitialize()
 
-                # COM 정리
-                try:
-                    pythoncom.CoUninitialize()
-                except:
-                    pass
+            # Word 애플리케이션 생성
+            word = win32.gencache.EnsureDispatch('Word.Application')
 
-                # 가비지 컬렉션
-                gc.collect()
+            word.Visible = False
+            return word
 
-                if attempt < max_retries - 1:
-                    time.sleep(1)  # 재시도 전 대기
-                else:
-                    raise Exception(f"Excel 애플리케이션 생성 실패 (모든 재시도 실패): {str(e)}")
+        except Exception as e:
+            self.log(f"  ✗ Word 생성 실패: {str(e)}")
 
-        return None
-
-    def create_word_app_with_retry(self, max_retries=3):
-        """Word 애플리케이션을 재시도 로직과 함께 생성"""
-        for attempt in range(max_retries):
+            # COM 정리
             try:
-                # COM 초기화 (스레드별로 필요)
-                pythoncom.CoInitialize()
+                pythoncom.CoUninitialize()
+            except:
+                pass
 
-                # 첫 시도는 EnsureDispatch, 실패 시 Dispatch 사용
-                if attempt == 0:
-                    word = win32.gencache.EnsureDispatch('Word.Application')
-                else:
-                    # 캐시 문제 시 Dispatch 사용
-                    word = win32.Dispatch('Word.Application')
+            # 가비지 컬렉션
+            gc.collect()
 
-                word.Visible = False
-                return word
-
-            except Exception as e:
-                self.log(f"  ⚠️ Word 생성 실패 (시도 {attempt + 1}/{max_retries}): {str(e)}")
-
-                # COM 정리
-                try:
-                    pythoncom.CoUninitialize()
-                except:
-                    pass
-
-                # 가비지 컬렉션
-                gc.collect()
-
-                if attempt < max_retries - 1:
-                    time.sleep(1)  # 재시도 전 대기
-                else:
-                    raise Exception(f"Word 애플리케이션 생성 실패 (모든 재시도 실패): {str(e)}")
-
-        return None
+            raise Exception(f"Word 애플리케이션 생성 실패: {str(e)}")
 
     def cleanup_com_object(self, obj, obj_name=""):
         """COM 객체 안전하게 정리"""
@@ -2130,23 +2161,12 @@ class ExcelRangeProcessorThread(QThread):
             find.Forward = True
             find.Wrap = 1  # wdFindContinue
 
-            # ★★★ 마커 찾기 재시도 로직 (안정성 향상) ★★★
-            # Word COM 상태에 따라 첫 시도가 실패할 수 있으므로 최대 2회 시도
-            max_find_retries = 2
-            marker_found = False
-
-            for retry_attempt in range(max_find_retries):
-                if find.Execute():
-                    marker_found = True
-                    break  # 마커 찾기 성공
-                else:
-                    if retry_attempt < max_find_retries - 1:
-                        # 재시도 전 짧은 대기 및 커서 초기화
-                        time.sleep(0.05)
-                        word_app.Selection.HomeKey(Unit=6)  # wdStory - 커서 처음으로
-                        find.ClearFormatting()
-                        find.Text = marker
-                        self.log(f"  ⚠️ 마커 찾기 재시도 중... ({retry_attempt + 2}/{max_find_retries})")
+            # ========================================
+            # 주의: 마커 찾기 재시도 로직 제거됨 (사용자 요청)
+            # 이전 버전에서는 최대 2회 재시도했으나
+            # 현재는 1회만 시도 후 실패 시 즉시 다음 로직으로 진행
+            # ========================================
+            marker_found = find.Execute()
 
             # 마커 찾기 결과 확인
             if marker_found:
