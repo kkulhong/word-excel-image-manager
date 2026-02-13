@@ -471,6 +471,13 @@ class IntegratedWordExcelManager(QMainWindow):
                 color: #2c3e50;
                 background-color: white;
             }
+            QMessageBox {
+                background-color: white;
+            }
+            QMessageBox QLabel {
+                color: #2c3e50;
+                font-size: 9pt;
+            }
         """)
 
 
@@ -2101,7 +2108,7 @@ class ExcelRangeProcessorThread(QThread):
             # ★★★ 클립보드 복사 완료 대기 (동기화) ★★★
             # Excel COM의 CopyPicture()는 비동기 작업일 수 있으므로
             # 클립보드에 실제로 복사될 시간을 확보
-            time.sleep(0.15)  # 클립보드 안정화 시간 (150ms)
+            #time.sleep(0.15)  # 클립보드 안정화 시간 (150ms)
 
             self.log(f"  ✓ 범위 복사 완료 (클립보드)")
             return True
