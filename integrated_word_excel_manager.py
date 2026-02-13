@@ -2091,6 +2091,11 @@ class ExcelRangeProcessorThread(QThread):
             # xlScreen=1, xlPicture=-4147
             range_obj.CopyPicture(Appearance=1, Format=-4147)
 
+            # ★★★ 클립보드 복사 완료 대기 (동기화) ★★★
+            # Excel COM의 CopyPicture()는 비동기 작업일 수 있으므로
+            # 클립보드에 실제로 복사될 시간을 확보
+            time.sleep(0.15)  # 클립보드 안정화 시간 (150ms)
+
             self.log(f"  ✓ 범위 복사 완료 (클립보드)")
             return True
 
@@ -2111,8 +2116,26 @@ class ExcelRangeProcessorThread(QThread):
             find.Forward = True
             find.Wrap = 1  # wdFindContinue
 
-            # 마커 찾기
-            if find.Execute():
+            # ★★★ 마커 찾기 재시도 로직 (안정성 향상) ★★★
+            # Word COM 상태에 따라 첫 시도가 실패할 수 있으므로 최대 2회 시도
+            max_find_retries = 2
+            marker_found = False
+
+            for retry_attempt in range(max_find_retries):
+                if find.Execute():
+                    marker_found = True
+                    break  # 마커 찾기 성공
+                else:
+                    if retry_attempt < max_find_retries - 1:
+                        # 재시도 전 짧은 대기 및 커서 초기화
+                        time.sleep(0.05)
+                        word_app.Selection.HomeKey(Unit=6)  # wdStory - 커서 처음으로
+                        find.ClearFormatting()
+                        find.Text = marker
+                        self.log(f"  ⚠️ 마커 찾기 재시도 중... ({retry_attempt + 2}/{max_find_retries})")
+
+            # 마커 찾기 결과 확인
+            if marker_found:
                 # 페이지 설정 정보
                 page_setup = word_app.ActiveDocument.PageSetup
                 page_height = page_setup.PageHeight
@@ -2208,8 +2231,11 @@ class ExcelRangeProcessorThread(QThread):
                         picture.Height = calculated_height
                         self.log(f"  ✓ 기본 크기 적용: 16.5cm × {calculated_height/28.35:.1f}cm")
                 else:
-                    # picture 객체를 찾을 수 없는 경우
-                    self.log(f"  ⚠️ 경고: 이미지 객체 찾기 실패 (크기 조정 불가)")
+                    # ★★★ 이미지 객체를 찾을 수 없는 경우 - 명확한 에러 처리 ★★★
+                    # picture is None이면 클립보드가 비어있거나 붙여넣기 실패
+                    error_msg = f"붙여넣기 후 이미지 객체를 찾을 수 없음 (클립보드 비어있음 또는 COM 오류)"
+                    self.log(f"  ❌ 삽입 실패 [{marker}]: {error_msg}")
+                    return False, error_msg
 
                 self.log(f"  ✓ 그림 삽입 성공: {marker}")
                 return True, None
@@ -2320,8 +2346,8 @@ class ExcelRangeProcessorThread(QThread):
                                         success, error_msg = self.paste_picture_at_marker(word, marker)
                                         if success:
                                             result['images_inserted'] += 1
-                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지)
-                                            time.sleep(0.05)
+                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지 및 안정화)
+                                            time.sleep(0.1)
                                         else:
                                             result['images_failed'] += 1
                                             result['failed_markers'].append({
@@ -2358,8 +2384,8 @@ class ExcelRangeProcessorThread(QThread):
                                         success, error_msg = self.paste_picture_at_marker(word, marker)
                                         if success:
                                             result['images_inserted'] += 1
-                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지)
-                                            time.sleep(0.05)
+                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지 및 안정화)
+                                            time.sleep(0.1)
                                         else:
                                             result['images_failed'] += 1
                                             result['failed_markers'].append({
