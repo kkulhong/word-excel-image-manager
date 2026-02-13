@@ -449,6 +449,7 @@ class IntegratedWordExcelManager(QMainWindow):
                 border-radius: 4px;
                 font-size: 9pt;
                 background-color: white;
+                color: #2c3e50;
             }
             QLineEdit:focus {
                 border: 2px solid #3498db;
@@ -458,12 +459,17 @@ class IntegratedWordExcelManager(QMainWindow):
                 border: 1px solid #dcdde1;
                 border-radius: 4px;
                 background-color: white;
+                color: #2c3e50;
             }
             QLabel {
                 color: #2c3e50;
             }
             QCheckBox {
                 color: #2c3e50;
+            }
+            QTextEdit {
+                color: #2c3e50;
+                background-color: white;
             }
         """)
 
@@ -612,8 +618,9 @@ class ImageFilenameManagerTab(QWidget):
         self.guide_text.setMinimumHeight(400)
         self.guide_text.setStyleSheet("""
             QTextEdit {
-                background-color: #f8f9fa;
-                border: 1px solid #dcdde1;
+                background-color: #2c3e50;
+                color: #ecf0f1;
+                border: 1px solid #34495e;
                 border-radius: 4px;
                 padding: 10px;
                 font-size: 9pt;
@@ -2347,7 +2354,7 @@ class ExcelRangeProcessorThread(QThread):
                                         if success:
                                             result['images_inserted'] += 1
                                             # 이미지 삽입 후 짧은 대기 (Word 과부하 방지 및 안정화)
-                                            time.sleep(0.1)
+                                            time.sleep(0.05)
                                         else:
                                             result['images_failed'] += 1
                                             result['failed_markers'].append({
@@ -2384,8 +2391,7 @@ class ExcelRangeProcessorThread(QThread):
                                         success, error_msg = self.paste_picture_at_marker(word, marker)
                                         if success:
                                             result['images_inserted'] += 1
-                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지 및 안정화)
-                                            time.sleep(0.1)
+                                            time.sleep(0.05)
                                         else:
                                             result['images_failed'] += 1
                                             result['failed_markers'].append({
@@ -2426,6 +2432,7 @@ class ExcelRangeProcessorThread(QThread):
                             wb = None
                             excel = None
 
+                                            # 이미지 삽입 후 짧은 대기 (Word 과부하 방지 및 안정화)
                             # Excel 파일 간 짧은 대기
                             gc.collect()
                             time.sleep(0.3)
@@ -2734,8 +2741,9 @@ class ExcelRangeInserterTab(QWidget):
         guide_text.setMaximumHeight(200)
         guide_text.setStyleSheet("""
             QTextEdit {
-                background-color: #f8f9fa;
-                border: 1px solid #dcdde1;
+                background-color: #2c3e50;
+                color: #ecf0f1;
+                border: 1px solid #34495e;
                 border-radius: 4px;
                 padding: 10px;
                 font-size: 9pt;
