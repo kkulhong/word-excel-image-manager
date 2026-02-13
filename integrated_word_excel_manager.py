@@ -2684,8 +2684,13 @@ class ExcelRangeInserterTab(QWidget):
             QTableWidget {
                 border: 1px solid #dcdde1;
                 background-color: white;
+                color: #2c3e50;
                 gridline-color: #ecf0f1;
                 alternate-background-color: #f8f9fa;
+            }
+            QTableWidget::item {
+                color: #2c3e50;
+                padding: 5px;
             }
             QHeaderView::section {
                 background-color: #3498db;
